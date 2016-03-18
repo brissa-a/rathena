@@ -943,6 +943,7 @@ int mob_spawn (struct mob_data *md)
 	unsigned int tick = gettick();
 	int c =0;
 
+	md->spawntime = tick;
 	md->last_thinktime = tick;
 	if (md->bl.prev != NULL)
 		unit_remove_map(&md->bl,CLR_RESPAWN);
@@ -2359,11 +2360,12 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 				if(md->db->mexp > 0)
 					zeny*=rnd()%250;
 			}
-
+			//The more a mob live the more it give exp, motivate players to kill monster from unexplored zone
+			double alive_coef = pow((gettick() - md->spawntime) / 60, 0.2);
 			if (map[m].flag.nobaseexp || !md->db->base_exp)
 				base_exp = 0;
 			else {
-				double exp = apply_rate2(md->db->base_exp, per, 1);
+				double exp = apply_rate2(alive_coef* md->db->base_exp, per, 1);
 				exp = apply_rate(exp, bonus);
 				exp = apply_rate(exp, map[m].adjust.bexp);
 				base_exp = (unsigned int)cap_value(exp, 1, UINT_MAX);
@@ -2372,7 +2374,7 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 			if (map[m].flag.nojobexp || !md->db->job_exp || md->dmglog[i].flag == MDLF_HOMUN) //Homun earned job-exp is always lost.
 				job_exp = 0;
 			else {
-				double exp = apply_rate2(md->db->job_exp, per, 1);
+				double exp = apply_rate2(alive_coef * md->db->job_exp, per, 1);
 				exp = apply_rate(exp, bonus);
 				exp = apply_rate(exp, map[m].adjust.jexp);
 				job_exp = (unsigned int)cap_value(exp, 1, UINT_MAX);
