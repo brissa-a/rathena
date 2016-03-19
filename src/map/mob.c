@@ -2400,11 +2400,12 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 					zeny*=rnd()%250;
 			}
 			//The more a mob live the more it give exp, motivate players to kill monster from unexplored zone
-			double alive_coef = pow((gettick() - md->spawntime) / 60, 0.2);
+			double alive_coef = pow((tick - md->spawntime) / 60, 0.2);
+			ShowDebug("Bonus xp: '%d'.\n", alive_coef);
 			if (map[m].flag.nobaseexp || !md->db->base_exp)
 				base_exp = 0;
 			else {
-				double exp = apply_rate2(alive_coef* md->db->base_exp, per, 1);
+				double exp = apply_rate2(alive_coef * md->db->base_exp, per, 1);
 				exp = apply_rate(exp, bonus);
 				exp = apply_rate(exp, map[m].adjust.bexp);
 				base_exp = (unsigned int)cap_value(exp, 1, UINT_MAX);
