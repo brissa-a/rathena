@@ -1435,8 +1435,7 @@ int skill_additional_effect(struct block_list* src, struct block_list *bl, uint1
 		sc_start(src,bl,SC_FREEZING,15,skill_lv,skill_get_time(skill_id,skill_lv));
 		break;
 	case AB_ADORAMUS:
-		if( tsc && !tsc->data[SC_DECREASEAGI] ) //Prevent duplicate agi-down effect.
-			sc_start(src,bl, SC_ADORAMUS, skill_lv * 4 + (sd ? sd->status.job_level : 50) / 2, skill_lv, skill_get_time(skill_id, skill_lv));
+		sc_start(src,bl, SC_ADORAMUS, skill_lv * 4 + (sd ? sd->status.job_level : 50) / 2, skill_lv, skill_get_time2(skill_id, skill_lv));
 		break;
 	case WL_CRIMSONROCK:
 		sc_start(src,bl, SC_STUN, 40, skill_lv, skill_get_time(skill_id, skill_lv));
@@ -4224,18 +4223,37 @@ static int skill_active_reverberation(struct block_list *bl, va_list ap) {
 	return 1;
 }
 
+/**
+ * Reveal hidden trap
+ **/
 static int skill_reveal_trap(struct block_list *bl, va_list ap)
 {
 	TBL_SKILL *su = (TBL_SKILL*)bl;
 
-	if (su->alive && su->group && skill_get_inf2(su->group->skill_id)&INF2_TRAP)
-	{	//Reveal trap.
+	if (su->alive && su->group && su->hidden && skill_get_inf2(su->group->skill_id)&INF2_TRAP) {
 		//Change look is not good enough, the client ignores it as an actual trap still. [Skotlex]
 		//clif_changetraplook(bl, su->group->unit_id);
-		clif_getareachar_skillunit(&su->bl, su, AREA, 0);
+
+		su->hidden = false;
+		skill_getareachar_skillunit_visibilty(su, AREA);
 		return 1;
 	}
 	return 0;
+}
+
+/**
+ * Attempt to reaveal trap in area
+ * @param src Skill caster
+ * @param range Affected range
+ * @param x
+ * @param y
+ * TODO: Remove hardcode usages for this function
+ **/
+void skill_reveal_trap_inarea(struct block_list *src, int range, int x, int y) {
+	if (!battle_config.traps_setting)
+		return;
+	nullpo_retv(src);
+	map_foreachinarea(skill_reveal_trap, src->m, x-range, y-range, x+range, y+range, BL_SKILL);
 }
 
 /*==========================================
@@ -4700,8 +4718,9 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, uint
 					skill_area_temp[4] = bl->x;
 					skill_area_temp[5] = bl->y;
 					break;
-				case NC_VULCANARM:
 				case NC_ARMSCANNON:
+					starget = BL_CHAR;
+				case NC_VULCANARM:
 					if (sd)
 						pc_overheat(sd, 1);
 					break;
@@ -6529,11 +6548,12 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, ui
 
 	case AC_CONCENTRATION:
 		{
+			int splash = skill_get_splash(skill_id, skill_lv);
 			clif_skill_nodamage(src,bl,skill_id,skill_lv,
 				sc_start(src,bl,type,100,skill_lv,skill_get_time(skill_id,skill_lv)));
+			skill_reveal_trap_inarea(src, splash, src->x, src->y);
 			map_foreachinrange( status_change_timer_sub, src,
-				skill_get_splash(skill_id, skill_lv), BL_CHAR,
-				src,NULL,type,tick);
+				splash, BL_CHAR, src, NULL, type, tick);
 		}
 		break;
 
@@ -11363,9 +11383,7 @@ int skill_castend_pos2(struct block_list* src, int x, int y, uint16 skill_id, ui
 		map_foreachinarea( status_change_timer_sub,
 			src->m, x-i, y-i, x+i,y+i,BL_CHAR,
 			src,NULL,SC_SIGHT,tick);
-		if(battle_config.traps_setting&1)
-			map_foreachinarea(skill_reveal_trap, src->m, x-i, y-i, x+i, y+i, BL_SKILL);
-			break;
+		skill_reveal_trap_inarea(src, i, x, y);
 		break;
 
 	case SR_RIDEINLIGHTNING:
@@ -11763,7 +11781,6 @@ int skill_castend_pos2(struct block_list* src, int x, int y, uint16 skill_id, ui
 	case AC_SHOWER:
 	case MA_SHOWER:
 	case NC_COLDSLOWER:
-	case NC_ARMSCANNON:
 	case RK_DRAGONBREATH:
 	case RK_DRAGONBREATH_WATER:
 		// Cast center might be relevant later (e.g. for knockback direction)
@@ -11771,9 +11788,9 @@ int skill_castend_pos2(struct block_list* src, int x, int y, uint16 skill_id, ui
 		skill_area_temp[5] = y;
 		i = skill_get_splash(skill_id,skill_lv);
 		if (battle_config.skill_wall_check)
-			map_foreachinshootarea(skill_area_sub,src->m,x-i,y-i,x+i,y+i,splash_target(src),src,skill_id,skill_lv,tick,flag|BCT_ENEMY|1,skill_castend_damage_id);
+			map_foreachinshootarea(skill_area_sub,src->m,x-i,y-i,x+i,y+i,BL_CHAR|BL_SKILL,src,skill_id,skill_lv,tick,flag|BCT_ENEMY|1,skill_castend_damage_id);
 		else
-			map_foreachinarea(skill_area_sub,src->m,x-i,y-i,x+i,y+i,splash_target(src),src,skill_id,skill_lv,tick,flag|BCT_ENEMY|1,skill_castend_damage_id);
+			map_foreachinarea(skill_area_sub,src->m,x-i,y-i,x+i,y+i,BL_CHAR|BL_SKILL,src,skill_id,skill_lv,tick,flag|BCT_ENEMY|1,skill_castend_damage_id);
 		break;
 
 	case SO_ARRULLO:
@@ -12242,7 +12259,7 @@ static int skill_dance_overlap_sub(struct block_list* bl, va_list ap)
 	else //Remove dissonance
 		target->val2 &= ~UF_ENSEMBLE;
 
-	clif_getareachar_skillunit(&target->bl, target, AREA, 0); //Update look of affected cell.
+	skill_getareachar_skillunit_visibilty(target, AREA);
 
 	return 1;
 }
@@ -12350,6 +12367,7 @@ struct skill_unit_group *skill_unitsetting(struct block_list *src, uint16 skill_
 	struct status_change *sc;
 	int active_flag = 1;
 	int subunt = 0;
+	bool hidden = false;
 
 	nullpo_retr(NULL, src);
 
@@ -12363,6 +12381,7 @@ struct skill_unit_group *skill_unitsetting(struct block_list *src, uint16 skill_
 	sd = BL_CAST(BL_PC, src);
 	status = status_get_status_data(src);
 	sc = status_get_sc(src);	// for traps, firewall and fogwall - celest
+	hidden = (unit_flag&UF_HIDDEN_TRAP && (battle_config.traps_setting == 2 || (battle_config.traps_setting == 1 && map_flag_vs(src->m))));
 
 	switch( skill_id ) {
 	case MH_STEINWAND:
@@ -12822,7 +12841,7 @@ struct skill_unit_group *skill_unitsetting(struct block_list *src, uint16 skill_
 		if( !alive )
 			continue;
 
-		nullpo_retr(NULL, (unit = skill_initunit(group,i,ux,uy,unit_val1,unit_val2)));
+		nullpo_retr(NULL, (unit = skill_initunit(group,i,ux,uy,unit_val1,unit_val2,hidden)));
 		unit->limit = limit;
 		unit->range = range;
 
@@ -13644,27 +13663,27 @@ int skill_unit_onplace_timer(struct skill_unit *unit, struct block_list *bl, uns
 			break;
 
 		case UNT_EPICLESIS:
+			++sg->val1; // Increment outside of the check to get the exact interval of the skill unit
 			if( bl->type == BL_PC && !battle_check_undead(tstatus->race, tstatus->def_ele) && tstatus->race != RC_DEMON ) {
-				int hp, sp;
-				switch( sg->skill_lv ) {
-					case 1: case 2: hp = 3; sp = 2; break;
-					case 3: case 4: hp = 4; sp = 3; break;
-					case 5: default: hp = 5; sp = 4; break;
+				if (sg->val1 % 3 == 0) { // Recover players every 3 seconds
+					int hp, sp;
+
+					switch( sg->skill_lv ) {
+						case 1: case 2: hp = 3; sp = 2; break;
+						case 3: case 4: hp = 4; sp = 3; break;
+						case 5: default: hp = 5; sp = 4; break;
+					}
+					hp = tstatus->max_hp * hp / 100;
+					sp = tstatus->max_sp * sp / 100;
+					if (tstatus->hp < tstatus->max_hp)
+						clif_skill_nodamage(&unit->bl, bl, AL_HEAL, hp, 1);
+					if (tstatus->sp < tstatus->max_sp)
+						clif_skill_nodamage(&unit->bl, bl, MG_SRECOVERY, sp, 1);
+					if (tsc && tsc->data[SC_AKAITSUKI] && hp)
+						hp = ~hp + 1;
+					status_heal(bl, hp, sp, 3);
 				}
-				hp = tstatus->max_hp * hp / 100;
-				sp = tstatus->max_sp * sp / 100;
-				if (tstatus->hp < tstatus->max_hp)
-					clif_skill_nodamage(&unit->bl, bl, AL_HEAL, hp, 1);
-				if (tstatus->sp < tstatus->max_sp)
-					clif_skill_nodamage(&unit->bl, bl, MG_SRECOVERY, sp, 1);
-				if (tsc && tsc->data[SC_AKAITSUKI] && hp)
-					hp = ~hp + 1;
-				status_heal(bl, hp, sp, 3);
-				sc_start(ss, bl, type, 100, sg->skill_lv, sg->interval + 100);
-				sg->val2++;
-				// Reveal hidden players every 5 seconds.
-				if( sg->val2 >= 5 ) {
-					sg->val2 = 0;
+				if (sg->val1 % 5 == 0) { // Reveal hidden players every 5 seconds
 					// Doesn't remove Invisibility or Chase Walk.
 					status_change_end(bl,SC_HIDING,INVALID_TIMER);
 					status_change_end(bl,SC_CLOAKING,INVALID_TIMER);
@@ -13673,6 +13692,7 @@ int skill_unit_onplace_timer(struct skill_unit *unit, struct block_list *bl, uns
 					if (tsc && tsc->data[SC__SHADOWFORM] && rnd() % 100 < 100 - tsc->data[SC__SHADOWFORM]->val1 * 10) // [100 - (Skill Level x 10)] %
 						status_change_end(bl, SC__SHADOWFORM, INVALID_TIMER);
 				}
+				sc_start(ss, bl, type, 100, sg->skill_lv, sg->interval + 100);
 			}
 			/* Enable this if kRO fix the current skill. Currently no damage on undead and demon monster. [Jobbie]
 			else if( battle_check_target(ss, bl, BCT_ENEMY) > 0 && battle_check_undead(tstatus->race, tstatus->def_ele) )
@@ -17251,6 +17271,77 @@ bool skill_check_camouflage(struct block_list *bl, struct status_change_entry *s
 }
 
 /**
+ * Process skill unit visibilty for single BL in area
+ * @param bl
+ * @param ap
+ * @author [Cydh]
+ **/
+int skill_getareachar_skillunit_visibilty_sub(struct block_list *bl, va_list ap) {
+	struct skill_unit *su = NULL;
+	struct block_list *src = NULL;
+	unsigned int party1 = 0;
+	bool visible = true;
+
+	nullpo_ret(bl);
+	nullpo_ret((su = va_arg(ap, struct skill_unit*)));
+	nullpo_ret((src = va_arg(ap, struct block_list*)));
+	party1 = va_arg(ap, unsigned int);
+
+	if (src != bl) {
+		unsigned int party2 = status_get_party_id(bl);
+		if (!party1 || !party2 || party1 != party2)
+			visible = false;
+	}
+
+	clif_getareachar_skillunit(bl, su, SELF, visible);
+	return 1;
+}
+
+/**
+ * Check for skill unit visibilty in area on
+ * - skill first placement
+ * - skill moved (knocked back, moved dance)
+ * @param su Skill unit
+ * @param target Affected target for this visibility @see enum send_target
+ * @author [Cydh]
+ **/
+void skill_getareachar_skillunit_visibilty(struct skill_unit *su, enum send_target target) {
+	nullpo_retv(su);
+
+	if (!su->hidden) // It's not hidden, just do this!
+		clif_getareachar_skillunit(&su->bl, su, target, true);
+	else {
+		struct block_list *src = battle_get_master(&su->bl);
+		map_foreachinarea(skill_getareachar_skillunit_visibilty_sub, su->bl.m, su->bl.x-AREA_SIZE, su->bl.y-AREA_SIZE,
+			su->bl.x+AREA_SIZE, su->bl.y+AREA_SIZE, BL_PC, su, src, status_get_party_id(src));
+	}
+}
+
+/**
+ * Check for skill unit visibilty on single BL on insight/spawn action
+ * @param su Skill unit
+ * @param bl Block list
+ * @author [Cydh]
+ **/
+void skill_getareachar_skillunit_visibilty_single(struct skill_unit *su, struct block_list *bl) {
+	bool visible = true;
+	struct block_list *src = NULL;
+
+	nullpo_retv(bl);
+	nullpo_retv(su);
+	nullpo_retv((src = battle_get_master(&su->bl)));
+
+	if (su->hidden && src != bl) {
+		unsigned int party1 = status_get_party_id(src);
+		unsigned int party2 = status_get_party_id(bl);
+		if (!party1 || !party2 || party1 != party2)
+			visible = false;
+	}
+
+	clif_getareachar_skillunit(bl, su, SELF, visible);
+}
+
+/**
  * Initialize new skill unit for skill unit group.
  * Overall, Skill Unit makes skill unit group which each group holds their cell datas (skill unit)
  * @param group Skill unit group
@@ -17260,7 +17351,7 @@ bool skill_check_camouflage(struct block_list *bl, struct status_change_entry *s
  * @param val1
  * @param val2
  */
-struct skill_unit *skill_initunit(struct skill_unit_group *group, int idx, int x, int y, int val1, int val2)
+struct skill_unit *skill_initunit(struct skill_unit_group *group, int idx, int x, int y, int val1, int val2, bool hidden)
 {
 	struct skill_unit *unit;
 
@@ -17283,6 +17374,7 @@ struct skill_unit *skill_initunit(struct skill_unit_group *group, int idx, int x
 	unit->alive = 1;
 	unit->val1 = val1;
 	unit->val2 = val2;
+	unit->hidden = hidden;
 
 	// Stores new skill unit
 	idb_put(skillunit_db, unit->bl.id, unit);
@@ -17312,7 +17404,7 @@ struct skill_unit *skill_initunit(struct skill_unit_group *group, int idx, int x
 			break;
 	}
 
-	clif_getareachar_skillunit(&unit->bl, unit, AREA, 0);
+	skill_getareachar_skillunit_visibilty(unit, AREA);
 	return unit;
 }
 
@@ -18163,7 +18255,7 @@ void skill_unit_move_unit(struct block_list *bl, int dx, int dy) {
 
 	map_moveblock(bl, dx, dy, tick);
 	map_foreachincell(skill_unit_effect,bl->m,bl->x,bl->y,su->group->bl_flag,bl,tick,1);
-	clif_getareachar_skillunit(bl, su, AREA, 0);
+	skill_getareachar_skillunit_visibilty(su, AREA);
 	return;
 }
 
@@ -18257,7 +18349,7 @@ void skill_unit_move_unit_group(struct skill_unit_group *group, int16 m, int16 d
 		if (!(m_flag[i]&0x2)) { //We only moved the cell in 0-1
 			if (group->state.song_dance&0x1) //Check for dissonance effect.
 				skill_dance_overlap(unit1, 1);
-			clif_getareachar_skillunit(&unit1->bl, unit1, AREA, 0);
+			skill_getareachar_skillunit_visibilty(unit1, AREA);
 			map_foreachincell(skill_unit_effect,unit1->bl.m,unit1->bl.x,unit1->bl.y,group->bl_flag,&unit1->bl,tick,1);
 		}
 	}
