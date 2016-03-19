@@ -7732,7 +7732,7 @@ static const struct _battle_data {
 	{ "player_damage_delay_rate",           &battle_config.pc_damage_delay_rate,            100,    0,      INT_MAX,        },
 	{ "defunit_not_enemy",                  &battle_config.defnotenemy,                     0,      0,      1,              },
 	{ "gvg_traps_target_all",               &battle_config.vs_traps_bctall,                 BL_PC,  BL_NUL, BL_ALL,         },
-	{ "traps_setting",                      &battle_config.traps_setting,                   0,      0,      1,              },
+	{ "traps_setting",                      &battle_config.traps_setting,                   0,      0,      2,              },
 	{ "summon_flora_setting",               &battle_config.summon_flora,                    1|2,    0,      1|2,            },
 	{ "clear_skills_on_death",              &battle_config.clear_unit_ondeath,              BL_NUL, BL_NUL, BL_ALL,         },
 	{ "clear_skills_on_warp",               &battle_config.clear_unit_onwarp,               BL_ALL, BL_NUL, BL_ALL,         },
@@ -8188,6 +8188,7 @@ static const struct _battle_data {
 	{ "exp_cost_redemptio",                 &battle_config.exp_cost_redemptio,              1,      0,      100,            },
 	{ "exp_cost_redemptio_limit",           &battle_config.exp_cost_redemptio_limit,        5,      0,      MAX_PARTY,      },
 	{ "exp_cost_inspiration",               &battle_config.exp_cost_inspiration,            1,      0,      100,            },
+	{ "mvp_exp_reward_message",               &battle_config.mvp_exp_reward_message,            0,      0,      1,            },
 };
 
 #ifndef STATS_OPT_OUT
@@ -8419,6 +8420,13 @@ void battle_adjust_conf()
 	if (battle_config.feature_banking) {
 		ShowWarning("conf/battle/feature.conf banking is enabled but it requires PACKETVER 2013-07-24 or newer, disabling...\n");
 		battle_config.feature_banking = 0;
+	}
+#endif
+
+#if PACKETVER < 20131223
+	if (battle_config.mvp_exp_reward_message) {
+		ShowWarning("conf/battle/client.conf MVP EXP reward message is enabled but it requires PACKETVER 2013-12-23 or newer, disabling...\n");
+		battle_config.mvp_exp_reward_message = 0;
 	}
 #endif
 
