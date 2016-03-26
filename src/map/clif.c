@@ -9294,7 +9294,6 @@ void clif_charnameack (int fd, struct block_list *bl)
 		{
 			struct mob_data *md = (struct mob_data *)bl;
 			nullpo_retv(md);
-
 			memcpy(WBUFP(buf,6), md->name, NAME_LENGTH);
 			if( md->guardian_data && md->guardian_data->guild_id )
 			{
@@ -9307,6 +9306,11 @@ void clif_charnameack (int fd, struct block_list *bl)
 			{
 				char mobhp[50], *str_p = mobhp;
 				WBUFW(buf, 0) = cmd = 0x195;
+				if( battle_config.show_mob_info&8 ) {
+				  int tick2 = gettick();
+				  double alive_coef = pow((tick2 - md->spawntime) / 1000.0 / 10800.0, 0.42013077767);
+				  str_p += sprintf(str_p, "Exp %d%% | ", (int)(alive_coef * 100));
+				}
 				if( battle_config.show_mob_info&4 )
 					str_p += sprintf(str_p, "Lv. %d | ", md->level);
 				if( battle_config.show_mob_info&1 )
